@@ -9,6 +9,8 @@ import (
 )
 
 type OpCode int
+type DataType byte
+type Framing byte
 
 const (
 	Ping OpCode = iota
@@ -17,11 +19,22 @@ const (
 	G
 )
 
+const (
+	Continuation byte = iota
+	Utf8
+	Byte
+)
+
+const (
+	Fin byte = 1 << 7
+)
+
 type WebSocket struct {
-	Inbox  chan []byte
-	Closed chan bool
-	rw     *bufio.ReadWriter
-	conn   net.Conn
+	Inbox    chan []byte
+	Closed   chan bool
+	rw       *bufio.ReadWriter
+	conn     net.Conn
+	DataType byte
 }
 
 func (ws *WebSocket) Worker() {
@@ -39,11 +52,12 @@ func (ws *WebSocket) Worker() {
 }
 
 func (ws *WebSocket) Write(b []byte) {
+	//prolly good place to highwatermark + close
 	ws.Inbox <- b
 }
 
 func (ws *WebSocket) WriteS(s string) {
-	ws.Inbox <- []byte(s)
+	ws.Write([]byte(s))
 }
 
 func (ws *WebSocket) Close() error {
@@ -100,7 +114,7 @@ func (ws *WebSocket) writeFrame(b []byte) (n int, err error) {
 	llen := (length >> 8) & 255
 	rlen := length & 255
 
-	header := []byte{129}
+	header := []byte{Fin | ws.DataType}
 
 	if length > max16 {
 		header = append(header, 127, 0, 0, 0, 0, 0, byte(blen))
@@ -144,10 +158,11 @@ func Upgrade(w http.ResponseWriter, req *http.Request) *WebSocket {
 	rw.Flush()
 
 	ws := &WebSocket{
-		rw:     rw,
-		conn:   conn,
-		Closed: make(chan bool),
-		Inbox:  make(chan []byte, 256),
+		rw:       rw,
+		conn:     conn,
+		Closed:   make(chan bool),
+		Inbox:    make(chan []byte, 256),
+		DataType: Utf8,
 	}
 
 	go ws.Worker()
