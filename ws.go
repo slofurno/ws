@@ -61,6 +61,7 @@ func (ws *WebSocket) WriteS(s string) {
 }
 
 func (ws *WebSocket) Close() error {
+	close(ws.Closed)
 	return ws.conn.Close()
 }
 
@@ -117,7 +118,7 @@ func (ws *WebSocket) writeFrame(b []byte) (n int, err error) {
 	header := []byte{Fin | ws.DataType}
 
 	if length > max16 {
-		header = append(header, 127, 0, 0, 0, 0, 0, byte(blen))
+		header = append(header, 127, 0, 0, 0, 0, 0, byte(blen), byte(llen), byte(rlen))
 	} else if length >= 126 {
 		header = append(header, 126, byte(llen), byte(rlen))
 	} else {
